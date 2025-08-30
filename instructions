@@ -1,0 +1,745 @@
+# MediTrack — Step‑by‑step Build & Run Guide (Spring Boot + React + Oracle)
+
+A practical, copy‑paste friendly playbook from **file creation** and **saving**, to **running** and **managing** the whole stack.
+
+> **Stack**: Spring Boot, Spring Tool Suite (STS), React, Oracle DB, Spring Security (JWT), JPA/Hibernate, Maven, Axios
+
+---
+
+## 0) Prerequisites (install once)
+
+* **JDK 17+** (set `JAVA_HOME`)
+* **Spring Tool Suite (STS) 4** or IntelliJ IDEA
+* **Node.js 18+ & npm**
+* **Oracle DB** (local XE or remote) + Oracle JDBC driver
+* **Postman** (API testing)
+* **Git** (version control)
+
+Create a parent folder for the project (monorepo style):
+
+```
+meditrack/
+  backend/
+  frontend/
+```
+
+---
+
+## 1) Backend Setup (Spring Boot in STS)
+
+### 1.1 Create the project
+
+**STS → File → New → Spring Starter Project**
+
+* Name: `meditrack-backend`
+* Group: `com.meditrack`
+* Packaging: `jar`
+* Java: 17
+* **Dependencies**: *Spring Web*, *Spring Data JPA*, *Spring Security*, *Validation*, *Lombok*, *Spring Boot DevTools*, *Oracle Driver*
+* Finish (save into `meditrack/backend`)
+
+Project entry: `src/main/java/com/meditrack/MeditrackBackendApplication.java`
+
+> Tip: Enable **Build Automatically** in STS so saves trigger compilation.
+
+### 1.2 Configure Oracle connection
+
+Create/replace `src/main/resources/application.properties`:
+
+```properties
+server.port=8080
+spring.datasource.url=jdbc:oracle:thin:@localhost:1521/XEPDB1
+spring.datasource.username=MEDI_USER
+spring.datasource.password=your_password
+spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.Oracle12cDialect
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# CORS (adjust frontend URL)
+spring.mvc.cors.mappings[0].path-pattern=/api/**
+spring.mvc.cors.mappings[0].allowed-origins=http://localhost:5173,http://localhost:3000
+spring.mvc.cors.mappings[0].allowed-methods=GET,POST,PUT,DELETE,OPTIONS
+spring.mvc.cors.mappings[0].allowed-headers=*
+
+# JWT (example)
+app.jwt.secret=change-me-super-secret
+app.jwt.expiration-ms=86400000
+```
+
+> If you prefer SQL migrations, add **Flyway** and create `src/main/resources/db/migration/V1__init.sql` with DDL (see §1.5).
+
+### 1.3 Package structure
+
+```
+com.meditrack
+ ├─ config/            # security, cors, modelmapper
+ ├─ controller/        # REST controllers
+ ├─ dto/               # request/response DTOs
+ ├─ entity/            # JPA entities
+ ├─ exception/         # global handlers
+ ├─ repository/        # Spring Data JPA interfaces
+ ├─ service/           # interfaces
+ └─ service/impl/      # implementations
+```
+
+### 1.4 Create entities (minimal skeletons)
+
+`entity/User.java`
+
+```java
+package com.meditrack.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity @Table(name = "users")
+@Data @NoArgsConstructor @AllArgsConstructor @Builder
+public class User {
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  @Column(nullable=false)
+  private String name;
+
+  @Column(nullable=false, unique=true)
+  private String email;
+
+  @Column(nullable=false)
+  private String password;
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable=false)
+  private Role role; // ADMIN, DOCTOR, PATIENT
+}
+```
+
+`entity/Role.java`
+
+```java
+package com.meditrack.entity;
+public enum Role { ADMIN, DOCTOR, PATIENT }
+```
+
+`entity/Doctor.java`
+
+```java
+package com.meditrack.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity @Table(name = "doctors")
+@Data @NoArgsConstructor @AllArgsConstructor @Builder
+public class Doctor {
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  @OneToOne(optional=false)
+  private User user;
+
+  @Column(nullable=false)
+  private String specialization;
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable=false)
+  private ApprovalStatus approvalStatus; // PENDING, APPROVED, REJECTED
+}
+```
+
+`entity/ApprovalStatus.java`
+
+```java
+package com.meditrack.entity;
+public enum ApprovalStatus { PENDING, APPROVED, REJECTED }
+```
+
+`entity/Patient.java`
+
+```java
+package com.meditrack.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity @Table(name = "patients")
+@Data @NoArgsConstructor @AllArgsConstructor @Builder
+public class Patient {
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  @OneToOne(optional=false)
+  private User user;
+
+  @Lob
+  private String medicalHistory; // optional
+}
+```
+
+`entity/Appointment.java`
+
+```java
+package com.meditrack.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+import java.time.*;
+
+@Entity @Table(name = "appointments")
+@Data @NoArgsConstructor @AllArgsConstructor @Builder
+public class Appointment {
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  @ManyToOne(optional=false)
+  private Doctor doctor;
+
+  @ManyToOne(optional=false)
+  private Patient patient;
+
+  @Column(nullable=false)
+  private LocalDate date;
+
+  @Column(nullable=false)
+  private String timeSlot; // e.g., "10:00-10:30"
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable=false)
+  private AppointmentStatus status; // PENDING, APPROVED, REJECTED, CONFIRMED
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable=false)
+  private PaymentStatus paymentStatus; // PENDING, PAID
+}
+```
+
+`entity/AppointmentStatus.java`
+
+```java
+package com.meditrack.entity;
+public enum AppointmentStatus { PENDING, APPROVED, REJECTED, CONFIRMED }
+```
+
+`entity/PaymentStatus.java`
+
+```java
+package com.meditrack.entity;
+public enum PaymentStatus { PENDING, PAID }
+```
+
+`entity/Payment.java`
+
+```java
+package com.meditrack.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+import java.time.*;
+
+@Entity @Table(name = "payments")
+@Data @NoArgsConstructor @AllArgsConstructor @Builder
+public class Payment {
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  @OneToOne(optional=false)
+  private Appointment appointment;
+
+  private Double amount;
+
+  @Enumerated(EnumType.STRING)
+  private PaymentResult status; // SUCCESS, FAILED
+
+  private LocalDateTime transactionDate;
+}
+```
+
+`entity/PaymentResult.java`
+
+```java
+package com.meditrack.entity;
+public enum PaymentResult { SUCCESS, FAILED }
+```
+
+### 1.5 Repositories
+
+`repository/*.java`
+
+```java
+package com.meditrack.repository;
+
+import com.meditrack.entity.*;
+import org.springframework.data.jpa.repository.*;
+import java.time.*;
+import java.util.*;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+  Optional<User> findByEmail(String email);
+}
+
+public interface DoctorRepository extends JpaRepository<Doctor, Long> {
+  List<Doctor> findBySpecializationAndApprovalStatus(String specialization, ApprovalStatus status);
+}
+
+public interface PatientRepository extends JpaRepository<Patient, Long> {
+  Optional<Patient> findByUserId(Long userId);
+}
+
+public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
+  List<Appointment> findByDoctorIdAndDate(Long doctorId, LocalDate date);
+  boolean existsByDoctorIdAndDateAndTimeSlotAndStatusIn(Long doctorId, LocalDate date, String timeSlot, Collection<AppointmentStatus> statuses);
+  List<Appointment> findByPatientIdOrderByDateDesc(Long patientId);
+  List<Appointment> findByDoctorIdOrderByDateDesc(Long doctorId);
+}
+
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
+  Optional<Payment> findByAppointmentId(Long appointmentId);
+}
+```
+
+### 1.6 Services (book, approve, pay)
+
+`service/AppointmentService.java`
+
+```java
+package com.meditrack.service;
+
+import com.meditrack.entity.*;
+import java.time.*;
+import java.util.*;
+
+public interface AppointmentService {
+  Appointment request(Long patientId, Long doctorId, LocalDate date, String timeSlot);
+  Appointment approve(Long doctorUserId, Long appointmentId, boolean approve);
+  Appointment confirmPayment(Long appointmentId, double amount, boolean success);
+  List<Appointment> historyForPatient(Long patientId);
+  List<Appointment> historyForDoctor(Long doctorId);
+}
+```
+
+`service/impl/AppointmentServiceImpl.java` (core logic incl. no-overlap)
+
+```java
+package com.meditrack.service.impl;
+
+import com.meditrack.entity.*;
+import com.meditrack.repository.*;
+import com.meditrack.service.AppointmentService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.*;
+
+@Service @RequiredArgsConstructor
+public class AppointmentServiceImpl implements AppointmentService {
+  private final AppointmentRepository appointmentRepo;
+  private final DoctorRepository doctorRepo;
+  private final PatientRepository patientRepo;
+  private final PaymentRepository paymentRepo;
+
+  @Override @Transactional
+  public Appointment request(Long patientId, Long doctorId, LocalDate date, String timeSlot) {
+    Doctor doctor = doctorRepo.findById(doctorId).orElseThrow();
+    Patient patient = patientRepo.findById(patientId).orElseThrow();
+
+    boolean clash = appointmentRepo.existsByDoctorIdAndDateAndTimeSlotAndStatusIn(
+      doctorId, date, timeSlot,
+      List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED, AppointmentStatus.CONFIRMED)
+    );
+    if (clash) throw new IllegalStateException("Slot already taken or pending");
+
+    Appointment appt = Appointment.builder()
+        .doctor(doctor)
+        .patient(patient)
+        .date(date)
+        .timeSlot(timeSlot)
+        .status(AppointmentStatus.PENDING)
+        .paymentStatus(PaymentStatus.PENDING)
+        .build();
+    return appointmentRepo.save(appt);
+  }
+
+  @Override @Transactional
+  public Appointment approve(Long doctorUserId, Long appointmentId, boolean approve) {
+    Appointment appt = appointmentRepo.findById(appointmentId).orElseThrow();
+    if (!Objects.equals(appt.getDoctor().getUser().getId(), doctorUserId))
+      throw new SecurityException("Not your appointment");
+
+    appt.setStatus(approve ? AppointmentStatus.APPROVED : AppointmentStatus.REJECTED);
+    return appointmentRepo.save(appt);
+  }
+
+  @Override @Transactional
+  public Appointment confirmPayment(Long appointmentId, double amount, boolean success) {
+    Appointment appt = appointmentRepo.findById(appointmentId).orElseThrow();
+
+    Payment payment = paymentRepo.findByAppointmentId(appointmentId)
+      .orElse(Payment.builder().appointment(appt).build());
+
+    payment.setAmount(amount);
+    payment.setStatus(success ? PaymentResult.SUCCESS : PaymentResult.FAILED);
+    payment.setTransactionDate(java.time.LocalDateTime.now());
+    paymentRepo.save(payment);
+
+    if (success) {
+      appt.setPaymentStatus(PaymentStatus.PAID);
+      appt.setStatus(AppointmentStatus.CONFIRMED);
+    }
+    return appointmentRepo.save(appt);
+  }
+
+  @Override
+  public List<Appointment> historyForPatient(Long patientId) {
+    return appointmentRepo.findByPatientIdOrderByDateDesc(patientId);
+  }
+
+  @Override
+  public List<Appointment> historyForDoctor(Long doctorId) {
+    return appointmentRepo.findByDoctorIdOrderByDateDesc(doctorId);
+  }
+}
+```
+
+### 1.7 Controllers (minimal endpoints)
+
+`controller/AppointmentController.java`
+
+```java
+package com.meditrack.controller;
+
+import com.meditrack.entity.*;
+import com.meditrack.service.AppointmentService;
+import lombok.*;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.*;
+
+@RestController
+@RequestMapping("/api/appointments")
+@RequiredArgsConstructor
+public class AppointmentController {
+  private final AppointmentService svc;
+
+  @PostMapping("/request")
+  public Appointment request(@RequestParam Long patientId,
+                             @RequestParam Long doctorId,
+                             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                             @RequestParam String timeSlot) {
+    return svc.request(patientId, doctorId, date, timeSlot);
+  }
+
+  @PutMapping("/{id}/approve")
+  public Appointment approve(@PathVariable Long id,
+                             @RequestParam Long doctorUserId,
+                             @RequestParam boolean approve) {
+    return svc.approve(doctorUserId, id, approve);
+  }
+
+  @PostMapping("/{id}/pay")
+  public Appointment pay(@PathVariable Long id,
+                         @RequestParam double amount,
+                         @RequestParam boolean success) {
+    return svc.confirmPayment(id, amount, success);
+  }
+
+  @GetMapping("/patient/{patientId}/history")
+  public List<Appointment> patientHistory(@PathVariable Long patientId) {
+    return svc.historyForPatient(patientId);
+  }
+
+  @GetMapping("/doctor/{doctorId}/history")
+  public List<Appointment> doctorHistory(@PathVariable Long doctorId) {
+    return svc.historyForDoctor(doctorId);
+  }
+}
+```
+
+> Add separate **AuthController**, **AdminController**, **DoctorController**, plus Spring Security config (JWT) as you progress.
+
+### 1.8 Spring Security (quick start)
+
+* For first run, you can **temporarily disable security** to test endpoints.
+* Then add JWT:
+
+  * `config/SecurityConfig.java`: HTTP security, stateless, permit `/api/auth/**`, secure `/api/**` by role
+  * Implement `UserDetailsService` reading from `UserRepository`
+  * Passwords with `BCryptPasswordEncoder`
+
+### 1.9 Run the backend
+
+* In **STS**: Right‑click project → **Run As → Spring Boot App**
+* Or terminal in `backend/`: `mvn spring-boot:run`
+* Verify at `http://localhost:8080/actuator/health` (if actuator added) or hit an endpoint via Postman.
+
+---
+
+## 2) Database Setup (Oracle)
+
+### 2.1 Create schema & user (example)
+
+```sql
+CREATE USER MEDI_USER IDENTIFIED BY your_password;
+GRANT CONNECT, RESOURCE TO MEDI_USER;
+ALTER USER MEDI_USER QUOTA UNLIMITED ON USERS;
+```
+
+> If you use `spring.jpa.hibernate.ddl-auto=update`, tables will be created from entities. For **controlled DDL**, add **Flyway** and put DDL in `db/migration/V1__init.sql`.
+
+### 2.2 Useful indices
+
+```sql
+CREATE INDEX IDX_APPT_DOCTOR_DATE ON APPOINTMENTS(doctor_id, date);
+CREATE INDEX IDX_USER_EMAIL ON USERS(email);
+```
+
+---
+
+## 3) Frontend Setup (React)
+
+### 3.1 Create the project
+
+In `meditrack/frontend`:
+
+```bash
+# Vite (fast)
+npm create vite@latest meditrack-frontend -- --template react
+cd meditrack-frontend
+npm install axios react-router-dom
+```
+
+### 3.2 File structure
+
+```
+src/
+ ├─ api/
+ │   └─ client.js
+ ├─ pages/
+ │   ├─ Login.jsx
+ │   ├─ ChooseRole.jsx           # patient/doctor entry
+ │   ├─ Patient/
+ │   │   ├─ Specializations.jsx
+ │   │   ├─ DoctorList.jsx
+ │   │   ├─ BookSlot.jsx
+ │   │   └─ History.jsx
+ │   ├─ Doctor/
+ │   │   ├─ Dashboard.jsx
+ │   │   └─ History.jsx
+ │   └─ Admin/
+ │       └─ Approvals.jsx
+ ├─ components/
+ │   └─ Navbar.jsx
+ ├─ App.jsx
+ └─ main.jsx
+```
+
+### 3.3 Axios client
+
+`src/api/client.js`
+
+```javascript
+import axios from "axios";
+
+const client = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:8080/api",
+});
+
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export default client;
+```
+
+### 3.4 Example page: Patient book flow
+
+`src/pages/Patient/BookSlot.jsx`
+
+```javascript
+import { useState } from "react";
+import client from "../../api/client";
+
+export default function BookSlot(){
+  const [patientId, setPatientId] = useState(1);
+  const [doctorId, setDoctorId] = useState(1);
+  const [date, setDate] = useState("");
+  const [timeSlot, setTimeSlot] = useState("");
+  const [resp, setResp] = useState(null);
+
+  const submit = async () => {
+    const r = await client.post(`/appointments/request`, null, { params: { patientId, doctorId, date, timeSlot } });
+    setResp(r.data);
+  };
+
+  return (
+    <div style={{padding:16}}>
+      <h2>Book Appointment</h2>
+      <input placeholder="Patient ID" value={patientId} onChange={e=>setPatientId(e.target.value)} />
+      <input placeholder="Doctor ID" value={doctorId} onChange={e=>setDoctorId(e.target.value)} />
+      <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
+      <input placeholder="Time Slot e.g. 10:00-10:30" value={timeSlot} onChange={e=>setTimeSlot(e.target.value)} />
+      <button onClick={submit}>Request</button>
+      {resp && <pre>{JSON.stringify(resp, null, 2)}</pre>}
+    </div>
+  );
+}
+```
+
+### 3.5 Run the frontend
+
+```bash
+npm run dev
+# Default: http://localhost:5173
+```
+
+> Make sure the backend CORS allows `http://localhost:5173` (see properties above).
+
+---
+
+## 4) Wiring the flows (role‑based)
+
+1. **Doctor signup** → saved as `User(role=DOCTOR)` + `Doctor(approval=PENDING)`
+2. **Admin** screen shows pending doctors → Approve/Reject
+3. **Patient** chooses specialization → Doctor list (approved only)
+4. **Patient** selects time slot → `POST /api/appointments/request` (status=PENDING)
+5. **Doctor** dashboard → Approve/Reject → `PUT /api/appointments/{id}/approve`
+6. If approved → **Patient** proceeds to payment → `POST /api/appointments/{id}/pay` (stub)
+7. On success → appointment `status=CONFIRMED`, `paymentStatus=PAID`
+
+> Add **Doctor’s no‑overlap** rule already implemented in service.
+
+---
+
+## 5) Running & Managing All Files (daily routine)
+
+### 5.1 Start order
+
+1. **Oracle DB** running
+2. **Backend**: STS → Run → Spring Boot App (or `mvn spring-boot:run`)
+3. **Frontend**: `npm run dev`
+
+### 5.2 Save & auto‑reload
+
+* Backend: With **DevTools**, saving any Java file triggers restart; watch console for errors.
+* Frontend: Vite hot reloads on save.
+
+### 5.3 Environment management
+
+* Backend profiles:
+
+  * `application-dev.properties`, `application-prod.properties`
+* Frontend env:
+
+  * `.env.local` → `VITE_API_BASE=http://localhost:8080/api`
+
+### 5.4 Logging & errors
+
+* Use `@ControllerAdvice` + `@ExceptionHandler` for clean API errors.
+* Add `logback-spring.xml` for rolling logs (optional).
+
+### 5.5 Version control (Git)
+
+Repo layout:
+
+```
+meditrack/
+  backend/
+  frontend/
+  README.md
+```
+
+`.gitignore` essentials:
+
+```
+backend/target/
+frontend/node_modules/
+frontend/dist/
+*.log
+*.env*
+```
+
+### 5.6 API testing (Postman)
+
+* Create a collection **MediTrack** with folders:
+
+  * Auth, Patient, Doctor, Admin, Appointments, Payments
+* Save sample requests with variables: `{{baseUrl}} = http://localhost:8080/api`
+
+### 5.7 Database migrations (optional but recommended)
+
+* Add Flyway dependency.
+* Put DDL in `src/main/resources/db/migration/V1__init.sql`.
+* Future changes → `V2__add_indexes.sql`, etc.
+
+### 5.8 Simple deployment path
+
+* Frontend: `npm run build` → outputs `dist/`
+* Option A: Serve `dist/` with Nginx
+* Option B: Integrate React build into Spring Boot’s `/static` (copy `dist` to `backend/src/main/resources/static`) and serve from same port (configure routes).
+
+### 5.9 Docker (optional)
+
+* Write `Dockerfile` for backend and one for frontend (or serve via backend only).
+* Use Oracle XE image (if allowed) or connect to managed Oracle.
+
+---
+
+## 6) Common pitfalls & fixes
+
+* **CORS errors** → ensure backend allows `http://localhost:5173` and methods/headers.
+* **Oracle driver** → ensure dependency present; for older setups, you may need to manually install the driver to local Maven.
+* **Time slot clashes** → handled by `existsBy...StatusIn` check; also enforce unique constraint:
+
+  ```sql
+  ALTER TABLE APPOINTMENTS ADD CONSTRAINT UQ_APPT_UNIQUE_SLOT
+  UNIQUE (DOCTOR_ID, DATE, TIME_SLOT);
+  ```
+* **Passwords** → always hash (BCrypt) before saving.
+* **JWT clock skew** → align system clocks.
+* **Entity recursion in JSON** → use DTOs or `@JsonIgnore` on bidirectional relations.
+
+---
+
+## 7) Next steps (niceties)
+
+* Notifications (email/SMS) on approval
+* Doctor availability calendar (generate free slots)
+* Payment gateway (Razorpay/Stripe) real integration
+* Admin reporting dashboard
+* Audit fields (createdAt/updatedAt) via `@PrePersist/@PreUpdate`
+
+---
+
+## 8) Quick command sheet
+
+**Backend**
+
+```bash
+cd backend
+mvn clean spring-boot:run
+```
+
+**Frontend**
+
+```bash
+cd frontend/meditrack-frontend
+npm install
+npm run dev
+```
+
+**Build frontend**
+
+```bash
+npm run build
+```
+
+---
+
+**You now have a working skeleton** with clear locations to add code. Start by wiring **Auth (JWT)** and **Admin approvals**, then the patient booking flow, and finally real payments.
