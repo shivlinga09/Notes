@@ -1,0 +1,331 @@
+Perfect ✅ — let’s rebuild the backend of MediTrack step by step, without billing, fully functional with post-appointment completed flow. I’ll give all the code stepwise, so if you include everything, it will work.
+
+We’ll use Spring Boot + Spring Data JPA + Spring Security + JWT + Oracle DB.
+
+
+---
+
+Step 1: Project Initialization
+
+Use Spring Initializr with these options:
+
+Project: Maven
+
+Language: Java
+
+Spring Boot: 3.2.x
+
+Packaging: Jar
+
+Java: 17
+
+
+Dependencies:
+
+Spring Web
+
+Spring Data JPA
+
+Spring Security
+
+Spring Boot DevTools
+
+Oracle Driver (ojdbc)
+
+Lombok
+
+Validation
+
+Swagger/OpenAPI (Springdoc OpenAPI)
+
+
+Download and extract project → name folder meditrack-backend.
+
+
+---
+
+Step 2: application.properties
+
+# Oracle DB
+spring.datasource.url=jdbc:oracle:thin:@localhost:1521/XEPDB1
+spring.datasource.username=medit_user
+spring.datasource.password=medit123
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.database-platform=org.hibernate.dialect.Oracle12cDialect
+
+# JWT
+jwt.secret=SecretKeyForJWTGeneration
+jwt.expirationMs=86400000
+
+# Swagger
+springdoc.api-docs.path=/api-docs
+springdoc.swagger-ui.path=/swagger-ui.html
+
+
+---
+
+Step 3: User & Role Entities
+
+Role Enum
+
+package com.meditrack.model;
+
+public enum Role {
+    PATIENT,
+    DOCTOR,
+    ADMIN
+}
+
+User Entity
+
+package com.meditrack.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name="users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @Column(unique = true)
+    private String email;
+
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    private Role role;
+
+    private boolean enabled = true;
+}
+
+
+---
+
+Step 4: Patient & Doctor Entities
+
+Patient Entity
+
+package com.meditrack.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name="patients")
+public class Patient {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne
+    @JoinColumn(name="user_id")
+    private User user;
+
+    private String dob;
+    private String contact;
+    private String address;
+}
+
+Doctor Entity
+
+package com.meditrack.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name="doctors")
+public class Doctor {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne
+    @JoinColumn(name="user_id")
+    private User user;
+
+    private String specialization;
+    private String availability;
+
+    private boolean verifiedByAdmin = false;
+}
+
+
+---
+
+Step 5: Appointment Entity
+
+package com.meditrack.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name="appointments")
+public class Appointment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name="patient_id")
+    private Patient patient;
+
+    @ManyToOne
+    @JoinColumn(name="doctor_id")
+    private Doctor doctor;
+
+    private LocalDateTime dateTime;
+
+    @Enumerated(EnumType.STRING)
+    private AppointmentStatus status = AppointmentStatus.PENDING;
+
+    private String description;
+}
+
+AppointmentStatus Enum
+
+package com.meditrack.model;
+
+public enum AppointmentStatus {
+    PENDING,
+    ACCEPTED,
+    REJECTED,
+    COMPLETED,
+    CANCELLED
+}
+
+
+---
+
+Step 6: Repositories
+
+UserRepository
+
+package com.meditrack.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import com.meditrack.model.User;
+import java.util.Optional;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+}
+
+PatientRepository
+
+package com.meditrack.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import com.meditrack.model.Patient;
+
+public interface PatientRepository extends JpaRepository<Patient, Long> {}
+
+DoctorRepository
+
+package com.meditrack.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import com.meditrack.model.Doctor;
+import java.util.List;
+
+public interface DoctorRepository extends JpaRepository<Doctor, Long> {
+    List<Doctor> findBySpecializationAndVerifiedByAdmin(String specialization, boolean verifiedByAdmin);
+}
+
+AppointmentRepository
+
+package com.meditrack.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import com.meditrack.model.Appointment;
+import com.meditrack.model.Doctor;
+import java.time.LocalDateTime;
+import java.util.List;
+
+public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
+    List<Appointment> findByDoctorAndDateTimeBetween(Doctor doctor, LocalDateTime start, LocalDateTime end);
+    List<Appointment> findByPatientId(Long patientId);
+    List<Appointment> findByDoctorId(Long doctorId);
+}
+
+
+---
+
+Step 7: Security Configuration (JWT + Spring Security)
+
+We can follow a JWT implementation similar to the GitHub repo you referenced.
+
+Files to create:
+
+1. JwtUtils.java – generate/validate JWT
+
+
+2. AuthEntryPointJwt.java – unauthorized handler
+
+
+3. AuthTokenFilter.java – JWT filter
+
+
+4. WebSecurityConfig.java – security config with role-based access
+
+
+
+(I can provide exact code for these next step if you want.)
+
+
+---
+
+✅ At this point:
+
+Database tables for users, patients, doctors, appointments are ready.
+
+Repositories are ready.
+
+Entities are ready.
+
+Billing is completely removed.
+
+Post-appointment “Completed” status is included.
+
+
+
+---
+
+I can continue Step 8: Services and Controllers next, including:
+
+AuthController
+
+PatientController
+
+DoctorController
+
+AppointmentController (with accept/reject/complete logic)
+
+NotificationController
+
+
+So everything will be fully functional for local backend.
+
+Do you want me to continue with Step 8 next?
+
