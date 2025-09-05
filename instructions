@@ -1151,3 +1151,334 @@ Then move to the React frontend (file-by-file) including external CSS files and 
 
 
 
+
+
+
+
+
+
+
+
+
+This will give you:
+
+Secure login for Patient, Doctor, Admin
+
+JWT token-based authentication
+
+Authorization rules (who can access which endpoints)
+
+🔹 Step 7: Security Layer
+
+Create a new package:
+📂 src/main/java/com/meditrack/security/
+
+We’ll add:
+
+JwtUtil.java – utility for token generation & validation
+
+CustomUserDetails.java – Spring Security wrapper for our users
+
+CustomUserDetailsService.java – load user from DB
+
+JwtFilter.java – intercept requests & validate token
+
+SecurityConfig.java – configure Spring Security
+
+AuthController.java – expose /login for all roles
+
+📂 File 1: JwtUtil.java
+package com.meditrack.security;
+
+import io.jsonwebtoken.*;
+import org.springframework.stereotype.Component;
+
+import java.util.Date;
+
+@Component
+public class JwtUtil {
+    private final String SECRET_KEY = "MEDITRACK_SECRET"; // use env variable in real apps
+    private final long EXPIRATION_TIME = 1000 * 60 * 60; // 1 hour
+
+    public String generateToken(String username, String role) {
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("role", role)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .signWith(SignatureAlgorithm.HS256, SECRET_KEY)
+                .compact();
+    }
+
+    public Claims extractAllClaims(String token) throws ExpiredJwtException {
+        return Jwts.parser().setSigningKey(SECRET_KEY).parseClaimsJws(token).getBody();
+    }
+
+    public String extractUsername(String token) {
+        return extractAllClaims(token).getSubject();
+    }
+
+    public String extractRole(String token) {
+        return extractAllClaims(token).get("role", String.class);
+    }
+
+    public boolean validateToken(String token, String username) {
+        return (username.equals(extractUsername(token)) && !isTokenExpired(token));
+    }
+
+    private boolean isTokenExpired(String token) {
+        return extractAllClaims(token).getExpiration().before(new Date());
+    }
+}
+
+📂 File 2: CustomUserDetails.java
+package com.meditrack.security;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.List;
+
+public class CustomUserDetails implements UserDetails {
+    private final String username;
+    private final String password;
+    private final String role;
+
+    public CustomUserDetails(String username, String password, String role) {
+        this.username = username;
+        this.password = password;
+        this.role = role;
+    }
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
+    }
+
+    @Override public String getPassword() { return password; }
+    @Override public String getUsername() { return username; }
+    @Override public boolean isAccountNonExpired() { return true; }
+    @Override public boolean isAccountNonLocked() { return true; }
+    @Override public boolean isCredentialsNonExpired() { return true; }
+    @Override public boolean isEnabled() { return true; }
+}
+
+📂 File 3: CustomUserDetailsService.java
+package com.meditrack.security;
+
+import com.meditrack.entity.Admin;
+import com.meditrack.entity.Doctor;
+import com.meditrack.entity.Patient;
+import com.meditrack.repository.AdminRepository;
+import com.meditrack.repository.DoctorRepository;
+import com.meditrack.repository.PatientRepository;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+@Service
+public class CustomUserDetailsService implements UserDetailsService {
+
+    private final PatientRepository patientRepo;
+    private final DoctorRepository doctorRepo;
+    private final AdminRepository adminRepo;
+
+    public CustomUserDetailsService(PatientRepository patientRepo, DoctorRepository doctorRepo, AdminRepository adminRepo) {
+        this.patientRepo = patientRepo;
+        this.doctorRepo = doctorRepo;
+        this.adminRepo = adminRepo;
+    }
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        Patient p = patientRepo.findByEmail(username);
+        if (p != null) return new CustomUserDetails(p.getEmail(), p.getPassword(), "PATIENT");
+
+        Doctor d = doctorRepo.findByEmail(username);
+        if (d != null) return new CustomUserDetails(d.getEmail(), d.getPassword(), "DOCTOR");
+
+        Admin a = adminRepo.findByUsername(username);
+        if (a != null) return new CustomUserDetails(a.getUsername(), a.getPassword(), "ADMIN");
+
+        throw new UsernameNotFoundException("User not found: " + username);
+    }
+}
+
+📂 File 4: JwtFilter.java
+package com.meditrack.security;
+
+import io.jsonwebtoken.ExpiredJwtException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
+@Component
+public class JwtFilter extends org.springframework.web.filter.OncePerRequestFilter {
+
+    private final JwtUtil jwtUtil;
+    private final CustomUserDetailsService userDetailsService;
+
+    public JwtFilter(JwtUtil jwtUtil, CustomUserDetailsService userDetailsService) {
+        this.jwtUtil = jwtUtil;
+        this.userDetailsService = userDetailsService;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        final String authHeader = request.getHeader("Authorization");
+        String username = null, jwt = null;
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            jwt = authHeader.substring(7);
+            try {
+                username = jwtUtil.extractUsername(jwt);
+            } catch (ExpiredJwtException e) {
+                System.out.println("JWT expired: " + e.getMessage());
+            }
+        }
+
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+
+            if (jwtUtil.validateToken(jwt, userDetails.getUsername())) {
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+
+        chain.doFilter(request, response);
+    }
+}
+
+📂 File 5: SecurityConfig.java
+package com.meditrack.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+@Configuration
+public class SecurityConfig {
+
+    private final CustomUserDetailsService userDetailsService;
+    private final JwtFilter jwtFilter;
+
+    public SecurityConfig(CustomUserDetailsService userDetailsService, JwtFilter jwtFilter) {
+        this.userDetailsService = userDetailsService;
+        this.jwtFilter = jwtFilter;
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public DaoAuthenticationProvider authProvider() {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
+        return provider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.csrf().disable()
+            .authorizeRequests()
+            .antMatchers("/api/auth/**").permitAll() // login/register endpoints open
+            .antMatchers("/api/admin/**").hasRole("ADMIN")
+            .antMatchers("/api/doctors/**").hasRole("DOCTOR")
+            .antMatchers("/api/patients/**").hasRole("PATIENT")
+            .anyRequest().authenticated()
+            .and()
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}
+
+📂 File 6: AuthController.java
+package com.meditrack.controller;
+
+import com.meditrack.security.CustomUserDetails;
+import com.meditrack.security.CustomUserDetailsService;
+import com.meditrack.security.JwtUtil;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/auth")
+@CrossOrigin(origins = "http://localhost:3000")
+public class AuthController {
+
+    private final AuthenticationManager authenticationManager;
+    private final CustomUserDetailsService userDetailsService;
+    private final JwtUtil jwtUtil;
+
+    public AuthController(AuthenticationManager authenticationManager,
+                          CustomUserDetailsService userDetailsService,
+                          JwtUtil jwtUtil) {
+        this.authenticationManager = authenticationManager;
+        this.userDetailsService = userDetailsService;
+        this.jwtUtil = jwtUtil;
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestParam String username, @RequestParam String password) {
+        try {
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Invalid username or password");
+        }
+
+        final UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        String role = userDetails.getAuthorities().iterator().next().getAuthority().replace("ROLE_", "");
+        final String jwt = jwtUtil.generateToken(username, role);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("token", jwt);
+        response.put("role", role);
+        return ResponseEntity.ok(response);
+    }
+}
+
+
+✅ Now MediTrack has:
+
+Full JWT-based security
+
+AuthController for login
+
+Role-based access for Admin, Doctor, Patient
