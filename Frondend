@@ -1,0 +1,1392 @@
+👉 Next step is Step 8: Swagger Integration
+
+This will let you test all APIs (Patient, Doctor, Admin, Appointment, Payment, Auth) directly in a UI at http://localhost:8080/swagger-ui.html
+
+📂 Add Dependency (in pom.xml)
+<dependency>
+    <groupId>org.springdoc</groupId>
+    <artifactId>springdoc-openapi-ui</artifactId>
+    <version>1.7.0</version>
+</dependency>
+
+📂 Create SwaggerConfig.java
+package com.meditrack.config;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class SwaggerConfig {
+
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("MediTrack API")
+                        .version("1.0")
+                        .description("API documentation for MediTrack Hospital Booking System"));
+    }
+}
+
+✅ Run the app
+
+Start your Spring Boot backend
+
+Go to: http://localhost:8080/swagger-ui.html
+
+You’ll see:
+
+/api/auth/login → login with patient/doctor/admin
+
+/api/patients/**, /api/doctors/**, /api/admin/** → test all endpoints with JWT
+
+⚡ Now backend development is fully complete & testable.
+
+👉 The next Step 9 will be setting up the React frontend (create-react-app, folder structure, login/signup pages, dashboard UIs for patient/doctor/admin).
+
+Do you want me to continue with the frontend React setup (Step 9)?
+
+You said:
+yes
+ChatGPT said:
+
+Great 🚀 let’s move to Step 9: React Frontend Setup for MediTrack.
+We’ll create a clean React app that connects to our Spring Boot backend.
+
+📂 Step 9.1 — Create React Project
+
+Run this in your terminal:
+
+npx create-react-app meditrack-frontend
+cd meditrack-frontend
+
+📂 Step 9.2 — Install Required Packages
+npm install axios react-router-dom bootstrap
+
+
+We’ll use:
+
+axios → for API calls
+
+react-router-dom → for routing (login, dashboards, etc.)
+
+bootstrap → for quick styling (we’ll add custom external CSS later too)
+
+📂 Step 9.3 — Project Folder Structure
+meditrack-frontend/
+│── public/
+│── src/
+│   ├── api/          # axios API files
+│   ├── components/   # reusable UI components
+│   ├── pages/        # Login, Register, Dashboards
+│   ├── styles/       # External CSS files
+│   ├── App.js
+│   ├── index.js
+│── package.json
+
+📂 Step 9.4 — Setup React Router
+
+Edit src/App.js:
+
+import React from "react";
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import PatientDashboard from "./pages/PatientDashboard";
+import DoctorDashboard from "./pages/DoctorDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import "./styles/global.css";
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/patient-dashboard" element={<PatientDashboard />} />
+        <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;
+
+📂 Step 9.5 — Global CSS
+
+Create src/styles/global.css:
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 800px;
+  margin: auto;
+  padding: 20px;
+}
+
+.card {
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  padding: 20px;
+  margin: 20px 0;
+}
+
+button {
+  border-radius: 8px !important;
+}
+
+📂 Step 9.6 — API Setup
+
+Create src/api/axiosConfig.js:
+
+import axios from "axios";
+
+const API = axios.create({
+  baseURL: "http://localhost:8080/api", // Spring Boot backend
+});
+
+// Attach JWT token if available
+API.interceptors.request.use((req) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    req.headers.Authorization = `Bearer ${token}`;
+  }
+  return req;
+});
+
+export default API;
+
+
+✅ Now we have:
+
+React app setup
+
+Routing ready
+
+Global CSS styling
+
+Axios with JWT support
+
+👉 Next (Step 10) we will build Login & Register Pages (Patient/Doctor/Admin) with API calls to the Spring Boot backend.
+
+Do you want me to go ahead with Step 10: Login & Register Pages?
+
+You said:
+yes
+ChatGPT said:
+
+Awesome 💯 Let’s move on to Step 10: Login & Register Pages for MediTrack.
+
+We’ll create LoginPage and RegisterPage, styled with our external CSS, and connect them to the Spring Boot backend (/api/auth/login and /api/auth/register).
+
+📂 Step 10.1 — Login Page
+
+Create file: src/pages/LoginPage.js
+
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import API from "../api/axiosConfig";
+import "../styles/auth.css";
+
+function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("PATIENT");
+  const navigate = useNavigate();
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await API.post("/auth/login", { email, password, role });
+      localStorage.setItem("token", response.data.token);
+
+      if (role === "PATIENT") navigate("/patient-dashboard");
+      else if (role === "DOCTOR") navigate("/doctor-dashboard");
+      else if (role === "ADMIN") navigate("/admin-dashboard");
+    } catch (err) {
+      alert("Login failed. Please check your credentials.");
+    }
+  };
+
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2 className="auth-title">MediTrack Login</h2>
+        <form onSubmit={handleLogin}>
+          <input
+            type="email"
+            placeholder="Email"
+            className="auth-input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            className="auth-input"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <select
+            className="auth-input"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          >
+            <option value="PATIENT">Patient</option>
+            <option value="DOCTOR">Doctor</option>
+            <option value="ADMIN">Admin</option>
+          </select>
+          <button type="submit" className="auth-button">Login</button>
+        </form>
+        <p>
+          Don’t have an account?{" "}
+          <span className="auth-link" onClick={() => navigate("/register")}>
+            Register here
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default LoginPage;
+
+📂 Step 10.2 — Register Page
+
+Create file: src/pages/RegisterPage.js
+
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import API from "../api/axiosConfig";
+import "../styles/auth.css";
+
+function RegisterPage() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("PATIENT");
+  const [specialization, setSpecialization] = useState("");
+  const navigate = useNavigate();
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    try {
+      const payload =
+        role === "DOCTOR"
+          ? { name, email, password, role, specialization }
+          : { name, email, password, role };
+
+      await API.post("/auth/register", payload);
+      alert("Registration successful! Please login.");
+      navigate("/");
+    } catch (err) {
+      alert("Registration failed.");
+    }
+  };
+
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2 className="auth-title">MediTrack Register</h2>
+        <form onSubmit={handleRegister}>
+          <input
+            type="text"
+            placeholder="Full Name"
+            className="auth-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            className="auth-input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            className="auth-input"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <select
+            className="auth-input"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          >
+            <option value="PATIENT">Patient</option>
+            <option value="DOCTOR">Doctor</option>
+          </select>
+          {role === "DOCTOR" && (
+            <input
+              type="text"
+              placeholder="Specialization"
+              className="auth-input"
+              value={specialization}
+              onChange={(e) => setSpecialization(e.target.value)}
+              required
+            />
+          )}
+          <button type="submit" className="auth-button">Register</button>
+        </form>
+        <p>
+          Already have an account?{" "}
+          <span className="auth-link" onClick={() => navigate("/")}>
+            Login here
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default RegisterPage;
+
+📂 Step 10.3 — Auth CSS (Modern Style)
+
+Create file: src/styles/auth.css
+
+.auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #00c6ff, #0072ff);
+}
+
+.auth-card {
+  background: #fff;
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  width: 360px;
+  text-align: center;
+}
+
+.auth-title {
+  margin-bottom: 20px;
+  font-size: 24px;
+  color: #333;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  outline: none;
+  transition: border 0.3s ease;
+}
+
+.auth-input:focus {
+  border: 1px solid #0072ff;
+}
+
+.auth-button {
+  width: 100%;
+  padding: 12px;
+  background: #0072ff;
+  color: white;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  margin-top: 15px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.auth-button:hover {
+  background: #0056cc;
+}
+
+.auth-link {
+  color: #0072ff;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+
+✅ Now you have:
+
+Login page → connects to /api/auth/login
+
+Register page → connects to /api/auth/register
+
+Role-based redirects (Patient → PatientDashboard, Doctor → DoctorDashboard, Admin → AdminDashboard)
+
+Modern styled UI with external CSS
+
+👉 Next, in Step 11, we’ll build the Dashboards:
+
+Patient → choose specialization → book appointment → view history
+
+Doctor → see appointments (pending/approved), approve/reject
+
+Admin → approve doctors, manage patients & doctors
+
+Do you want me to continue with Step 11: Patient Dashboard first?
+
+You said:
+yes
+ChatGPT said:
+
+Perfect 👌 Let’s start Step 11: Patient Dashboard.
+
+This dashboard will allow a patient to:
+
+View available doctors by specialization
+
+Book an appointment with a doctor
+
+View their appointment history
+
+📂 Step 11.1 — PatientDashboard.js
+
+Create file: src/pages/PatientDashboard.js
+
+import React, { useEffect, useState } from "react";
+import API from "../api/axiosConfig";
+import "../styles/dashboard.css";
+
+function PatientDashboard() {
+  const [specialization, setSpecialization] = useState("");
+  const [doctors, setDoctors] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+
+  // Fetch appointments for logged-in patient
+  const fetchAppointments = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await API.get("/patients/appointments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAppointments(response.data);
+    } catch (err) {
+      console.error("Error fetching appointments", err);
+    }
+  };
+
+  // Fetch doctors by specialization
+  const searchDoctors = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await API.get(
+        `/patients/doctors?specialization=${specialization}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setDoctors(response.data);
+    } catch (err) {
+      console.error("Error fetching doctors", err);
+    }
+  };
+
+  // Book appointment
+  const bookAppointment = async () => {
+    if (!selectedDoctor || !date || !time) {
+      alert("Please select doctor, date and time.");
+      return;
+    }
+    try {
+      const token = localStorage.getItem("token");
+      await API.post(
+        `/patients/book`,
+        {
+          doctorId: selectedDoctor.id,
+          date,
+          time,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Appointment booked successfully!");
+      fetchAppointments();
+      setSelectedDoctor(null);
+      setDate("");
+      setTime("");
+    } catch (err) {
+      console.error("Error booking appointment", err);
+      alert("Failed to book appointment.");
+    }
+  };
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  return (
+    <div className="dashboard-container">
+      <h2 className="dashboard-title">Patient Dashboard</h2>
+
+      {/* Doctor Search */}
+      <div className="dashboard-card">
+        <h3>Search Doctors</h3>
+        <input
+          type="text"
+          placeholder="Enter specialization (e.g. Cardiology)"
+          value={specialization}
+          onChange={(e) => setSpecialization(e.target.value)}
+          className="dashboard-input"
+        />
+        <button onClick={searchDoctors} className="dashboard-button">
+          Search
+        </button>
+
+        {doctors.length > 0 && (
+          <div className="doctor-list">
+            <h4>Available Doctors:</h4>
+            <ul>
+              {doctors.map((doc) => (
+                <li key={doc.id}>
+                  {doc.name} - {doc.specialization}
+                  <button
+                    className="dashboard-small-btn"
+                    onClick={() => setSelectedDoctor(doc)}
+                  >
+                    Select
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Appointment Booking */}
+      {selectedDoctor && (
+        <div className="dashboard-card">
+          <h3>Book Appointment with {selectedDoctor.name}</h3>
+          <input
+            type="date"
+            className="dashboard-input"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <input
+            type="time"
+            className="dashboard-input"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+          <button onClick={bookAppointment} className="dashboard-button">
+            Confirm Booking
+          </button>
+        </div>
+      )}
+
+      {/* Appointment History */}
+      <div className="dashboard-card">
+        <h3>Your Appointments</h3>
+        {appointments.length === 0 ? (
+          <p>No appointments found.</p>
+        ) : (
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Doctor</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {appointments.map((appt) => (
+                <tr key={appt.id}>
+                  <td>{appt.doctorName}</td>
+                  <td>{appt.date}</td>
+                  <td>{appt.time}</td>
+                  <td>{appt.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default PatientDashboard;
+
+📂 Step 11.2 — Dashboard CSS
+
+Create file: src/styles/dashboard.css
+
+.dashboard-container {
+  padding: 30px;
+  background: #f4f8fb;
+  min-height: 100vh;
+}
+
+.dashboard-title {
+  text-align: center;
+  font-size: 28px;
+  margin-bottom: 30px;
+  color: #0072ff;
+}
+
+.dashboard-card {
+  background: #fff;
+  padding: 20px;
+  margin: 20px auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  width: 90%;
+  max-width: 800px;
+}
+
+.dashboard-input {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.dashboard-button {
+  padding: 12px 18px;
+  margin-top: 10px;
+  background: #0072ff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.dashboard-button:hover {
+  background: #0056cc;
+}
+
+.doctor-list ul {
+  list-style: none;
+  padding: 0;
+}
+
+.doctor-list li {
+  margin: 8px 0;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-small-btn {
+  padding: 6px 12px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dashboard-small-btn:hover {
+  background: #1e7e34;
+}
+
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  text-align: center;
+}
+
+.dashboard-table th {
+  background: #0072ff;
+  color: white;
+}
+
+
+✅ Now patients can:
+
+Search doctors by specialization
+
+Book appointments with chosen doctor
+
+View their appointment history
+
+👉 Next in Step 12, we’ll build the Doctor Dashboard where doctors can:
+
+View their appointments
+
+Approve/reject bookings
+
+Do you want me to continue with Doctor Dashboard?
+
+You said:
+yes
+ChatGPT said:
+
+Awesome 🚀 Let’s continue with Step 12: Doctor Dashboard for MediTrack.
+
+The Doctor Dashboard will let doctors:
+
+See their specialization info
+
+View appointment requests
+
+Approve/Reject patient bookings
+
+View their past appointments
+
+📂 Step 12.1 — DoctorDashboard.js
+
+Create file: src/pages/DoctorDashboard.js
+
+import React, { useEffect, useState } from "react";
+import API from "../api/axiosConfig";
+import "../styles/dashboard.css";
+
+function DoctorDashboard() {
+  const [appointments, setAppointments] = useState([]);
+  const [specialization, setSpecialization] = useState("");
+
+  // Fetch doctor's appointments & specialization
+  const fetchDoctorData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const resAppointments = await API.get("/doctors/appointments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAppointments(resAppointments.data);
+
+      const resSpecialization = await API.get("/doctors/specialization", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSpecialization(resSpecialization.data);
+    } catch (err) {
+      console.error("Error fetching doctor data", err);
+    }
+  };
+
+  // Approve appointment
+  const approveAppointment = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      await API.post(
+        `/doctors/appointments/${id}/approve`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Appointment approved!");
+      fetchDoctorData();
+    } catch (err) {
+      console.error("Error approving appointment", err);
+      alert("Failed to approve appointment.");
+    }
+  };
+
+  // Reject appointment
+  const rejectAppointment = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      await API.post(
+        `/doctors/appointments/${id}/reject`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Appointment rejected!");
+      fetchDoctorData();
+    } catch (err) {
+      console.error("Error rejecting appointment", err);
+      alert("Failed to reject appointment.");
+    }
+  };
+
+  useEffect(() => {
+    fetchDoctorData();
+  }, []);
+
+  return (
+    <div className="dashboard-container">
+      <h2 className="dashboard-title">Doctor Dashboard</h2>
+
+      {/* Specialization Info */}
+      <div className="dashboard-card">
+        <h3>Specialization</h3>
+        <p>{specialization || "Not set"}</p>
+      </div>
+
+      {/* Appointments */}
+      <div className="dashboard-card">
+        <h3>Appointments</h3>
+        {appointments.length === 0 ? (
+          <p>No appointments found.</p>
+        ) : (
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Patient</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {appointments.map((appt) => (
+                <tr key={appt.id}>
+                  <td>{appt.patientName}</td>
+                  <td>{appt.date}</td>
+                  <td>{appt.time}</td>
+                  <td>{appt.status}</td>
+                  <td>
+                    {appt.status === "PENDING" && (
+                      <>
+                        <button
+                          className="dashboard-small-btn"
+                          onClick={() => approveAppointment(appt.id)}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="dashboard-reject-btn"
+                          onClick={() => rejectAppointment(appt.id)}
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default DoctorDashboard;
+
+📂 Step 12.2 — Add Reject Button Style
+
+Update src/styles/dashboard.css (add at the end):
+
+.dashboard-reject-btn {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: 5px;
+}
+
+.dashboard-reject-btn:hover {
+  background: #a71d2a;
+}
+
+
+✅ Now doctors can:
+
+See their specialization
+
+Manage appointments (approve/reject pending ones)
+
+See their appointment history
+
+👉 Next in Step 13, we’ll build the Admin Dashboard where admins can:
+
+Approve new doctor registrations
+
+Manage patients & doctors
+
+View all appointments
+
+Shall I go ahead with Admin Dashboard (Step 13)?
+
+You said:
+yes
+ChatGPT said:
+
+Perfect 👌 Let’s move on to Step 13: Admin Dashboard for MediTrack.
+
+The Admin Dashboard will allow the admin to:
+
+Approve or reject new doctor registrations
+
+View/manage patients and doctors
+
+View all appointments
+
+📂 Step 13.1 — AdminDashboard.js
+
+Create file: src/pages/AdminDashboard.js
+
+import React, { useEffect, useState } from "react";
+import API from "../api/axiosConfig";
+import "../styles/dashboard.css";
+
+function AdminDashboard() {
+  const [pendingDoctors, setPendingDoctors] = useState([]);
+  const [allDoctors, setAllDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+
+  // Fetch all admin data
+  const fetchAdminData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+
+      const resPendingDocs = await API.get("/admin/doctors/pending", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setPendingDoctors(resPendingDocs.data);
+
+      const resAllDocs = await API.get("/admin/doctors", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAllDoctors(resAllDocs.data);
+
+      const resPatients = await API.get("/admin/patients", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setPatients(resPatients.data);
+
+      const resAppointments = await API.get("/admin/appointments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAppointments(resAppointments.data);
+    } catch (err) {
+      console.error("Error fetching admin data", err);
+    }
+  };
+
+  // Approve doctor
+  const approveDoctor = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      await API.post(
+        `/admin/doctors/${id}/approve`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Doctor approved!");
+      fetchAdminData();
+    } catch (err) {
+      console.error("Error approving doctor", err);
+      alert("Failed to approve doctor.");
+    }
+  };
+
+  // Reject doctor
+  const rejectDoctor = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      await API.post(
+        `/admin/doctors/${id}/reject`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Doctor rejected!");
+      fetchAdminData();
+    } catch (err) {
+      console.error("Error rejecting doctor", err);
+      alert("Failed to reject doctor.");
+    }
+  };
+
+  useEffect(() => {
+    fetchAdminData();
+  }, []);
+
+  return (
+    <div className="dashboard-container">
+      <h2 className="dashboard-title">Admin Dashboard</h2>
+
+      {/* Pending Doctor Approvals */}
+      <div className="dashboard-card">
+        <h3>Pending Doctor Approvals</h3>
+        {pendingDoctors.length === 0 ? (
+          <p>No pending approvals.</p>
+        ) : (
+          <ul>
+            {pendingDoctors.map((doc) => (
+              <li key={doc.id}>
+                {doc.name} - {doc.specialization}
+                <button
+                  className="dashboard-small-btn"
+                  onClick={() => approveDoctor(doc.id)}
+                >
+                  Approve
+                </button>
+                <button
+                  className="dashboard-reject-btn"
+                  onClick={() => rejectDoctor(doc.id)}
+                >
+                  Reject
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* All Doctors */}
+      <div className="dashboard-card">
+        <h3>All Doctors</h3>
+        {allDoctors.length === 0 ? (
+          <p>No doctors found.</p>
+        ) : (
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Specialization</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allDoctors.map((doc) => (
+                <tr key={doc.id}>
+                  <td>{doc.name}</td>
+                  <td>{doc.specialization}</td>
+                  <td>{doc.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Patients */}
+      <div className="dashboard-card">
+        <h3>All Patients</h3>
+        {patients.length === 0 ? (
+          <p>No patients found.</p>
+        ) : (
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {patients.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.name}</td>
+                  <td>{p.email}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Appointments */}
+      <div className="dashboard-card">
+        <h3>All Appointments</h3>
+        {appointments.length === 0 ? (
+          <p>No appointments found.</p>
+        ) : (
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Patient</th>
+                <th>Doctor</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {appointments.map((appt) => (
+                <tr key={appt.id}>
+                  <td>{appt.patientName}</td>
+                  <td>{appt.doctorName}</td>
+                  <td>{appt.date}</td>
+                  <td>{appt.time}</td>
+                  <td>{appt.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default AdminDashboard;
+
+📂 Step 13.2 — CSS (already covered)
+
+We’re reusing dashboard.css, so no new CSS needed beyond what we added in Steps 11 & 12. ✅
+
+✅ Now Admin can:
+
+Approve/reject new doctor registrations
+
+View all doctors and their statuses
+
+View all patients
+
+View all appointments
+
+👉 Next in Step 14, we’ll integrate Payment Flow (after doctor approval → patient makes payment → final confirmation).
+
+Do you want me to continue with Step 14: Payment Integration?
+
+You said:
+yes
+ChatGPT said:
+
+Great 🚀 Let’s build Step 14: Payment Integration for MediTrack.
+
+We’ll keep it simple first (mock payment with a "Pay Now" button), then I’ll show you how to integrate a real provider (like Razorpay or Stripe).
+
+📂 Step 14.1 — Backend (Spring Boot) Setup
+
+We’ll create a Payment Microservice (to follow microservices approach).
+
+📂 Project: payment-service
+
+File: Payment.java (Entity)
+
+package com.meditrack.paymentservice.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Payment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Long appointmentId;
+
+    private Long patientId;
+
+    private Double amount;
+
+    private String status; // PENDING, SUCCESS, FAILED
+}
+
+
+File: PaymentRepository.java
+
+package com.meditrack.paymentservice.repository;
+
+import com.meditrack.paymentservice.model.Payment;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
+}
+
+
+File: PaymentService.java
+
+package com.meditrack.paymentservice.service;
+
+import com.meditrack.paymentservice.model.Payment;
+import com.meditrack.paymentservice.repository.PaymentRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class PaymentService {
+
+    private final PaymentRepository repo;
+
+    public PaymentService(PaymentRepository repo) {
+        this.repo = repo;
+    }
+
+    public Payment createPayment(Payment payment) {
+        payment.setStatus("PENDING");
+        return repo.save(payment);
+    }
+
+    public Payment completePayment(Long id) {
+        Payment payment = repo.findById(id).orElseThrow();
+        payment.setStatus("SUCCESS");
+        return repo.save(payment);
+    }
+
+    public List<Payment> getAllPayments() {
+        return repo.findAll();
+    }
+}
+
+
+File: PaymentController.java
+
+package com.meditrack.paymentservice.controller;
+
+import com.meditrack.paymentservice.model.Payment;
+import com.meditrack.paymentservice.service.PaymentService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/payments")
+public class PaymentController {
+
+    private final PaymentService service;
+
+    public PaymentController(PaymentService service) {
+        this.service = service;
+    }
+
+    @PostMapping
+    public Payment createPayment(@RequestBody Payment payment) {
+        return service.createPayment(payment);
+    }
+
+    @PostMapping("/{id}/complete")
+    public Payment completePayment(@PathVariable Long id) {
+        return service.completePayment(id);
+    }
+
+    @GetMapping
+    public List<Payment> getAllPayments() {
+        return service.getAllPayments();
+    }
+}
+
+📂 Step 14.2 — Frontend (React)
+
+Create: src/pages/PaymentPage.js
+
+import React, { useState } from "react";
+import API from "../api/axiosConfig";
+import "../styles/payment.css";
+
+function PaymentPage({ appointmentId, amount }) {
+  const [paymentId, setPaymentId] = useState(null);
+  const [status, setStatus] = useState(null);
+
+  const createPayment = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await API.post(
+        "/payments",
+        { appointmentId, patientId: 1, amount }, // patientId will come from auth
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setPaymentId(res.data.id);
+      setStatus(res.data.status);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const completePayment = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await API.post(
+        `/payments/${paymentId}/complete`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setStatus(res.data.status);
+      alert("Payment Successful!");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="payment-container">
+      <h2>Payment</h2>
+      <p>Amount: ₹{amount}</p>
+
+      {!paymentId ? (
+        <button onClick={createPayment} className="pay-btn">
+          Pay Now
+        </button>
+      ) : (
+        <>
+          <p>Payment ID: {paymentId}</p>
+          <p>Status: {status}</p>
+          {status === "PENDING" && (
+            <button onClick={completePayment} className="complete-btn">
+              Complete Payment
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default PaymentPage;
+
+📂 Step 14.3 — CSS (payment.css)
+
+Create: src/styles/payment.css
+
+.payment-container {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  margin: 30px auto;
+  text-align: center;
+}
+
+.pay-btn,
+.complete-btn {
+  background-color: #2ecc71;
+  border: none;
+  padding: 10px 20px;
+  color: white;
+  font-size: 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 15px;
+  transition: background 0.3s ease;
+}
+
+.pay-btn:hover,
+.complete-btn:hover {
+  background-color: #27ae60;
+}
+
+
+✅ Now the payment flow is:
+
+Doctor accepts → Appointment created → Patient redirected to Payment Page
+
+Patient clicks Pay Now → Payment created (PENDING)
+
+Patient clicks Complete Payment → Status updated to SUCCESS
+
+👉 Next in Step 15, I’ll show you how to connect Appointment Service with Payment Service (so payment is linked to confirmed appointment).
+
+Do you want me to continue with Step 15: Appointment ↔ Payment Integration?
